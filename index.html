@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>记忆星图 · 六六</title>
+<style>
+  :root{
+    --gold:#ffcf7a; --blue:#8fbcff; --pink:#ff9ad5;
+    --ink:#e8eefc; --dim:#93a0c4;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:#04050b;overflow:hidden}
+  body{font-family:"Noto Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:var(--ink)}
+  #stage{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%}
+  #head{position:fixed;left:28px;top:24px;z-index:5;pointer-events:none;
+        text-shadow:0 2px 18px rgba(0,0,0,.8)}
+  #head h1{margin:0;font-size:15px;font-weight:600;letter-spacing:.18em;color:#cfd9f7}
+  #head p{margin:6px 0 0;font-size:11px;letter-spacing:.12em;color:#7f8cae}
+  #hint{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:5;
+        font-size:11px;letter-spacing:.14em;color:#6f7c9d;pointer-events:none;
+        transition:opacity 1.2s ease}
+  #fade{position:fixed;inset:0;background:#000;z-index:20;pointer-events:none}
+  #panel{position:fixed;z-index:10;right:34px;top:50%;transform:translateY(-50%) translateX(24px);
+         width:min(380px,calc(100vw - 48px));max-height:70vh;overflow:auto;
+         padding:22px 22px 18px;border-radius:18px;
+         background:linear-gradient(160deg,rgba(20,24,44,.94),rgba(9,11,24,.96));
+         border:1px solid rgba(150,170,255,.18);
+         box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06);
+         opacity:0;pointer-events:none;transition:opacity .35s ease,transform .35s ease;
+         backdrop-filter:blur(14px)}
+  #panel.on{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0)}
+  #panel .cat{display:inline-block;font-size:10px;letter-spacing:.2em;padding:4px 9px;border-radius:999px;
+              border:1px solid currentColor;opacity:.9}
+  #panel .time{margin-left:8px;font-size:10px;letter-spacing:.12em;color:#7d89a8}
+  #panel h2{margin:14px 0 8px;font-size:15px;font-weight:600;color:#eef3ff;letter-spacing:.04em}
+  #panel .body{font-size:13px;line-height:1.9;color:#c3cde8;white-space:pre-wrap}
+  #panel .tags{margin-top:14px;display:flex;flex-wrap:wrap;gap:6px}
+  #panel .tag{font-size:10.5px;padding:3px 8px;border-radius:999px;color:#9fb0d8;
+              background:rgba(130,150,220,.1);border:1px solid rgba(130,150,220,.18)}
+  #panel .key{margin-top:12px;font-size:10px;letter-spacing:.1em;color:#5f6c8d}
+  #close{position:absolute;right:12px;top:10px;width:26px;height:26px;border-radius:50%;
+         border:0;background:rgba(255,255,255,.05);color:#8b98ba;cursor:pointer;font-size:14px}
+  #close:hover{background:rgba(255,255,255,.12);color:#fff}
+  #err{position:fixed;left:12px;bottom:12px;z-index:30;max-width:80vw;color:#ff8f8f;
+       font:12px/1.6 monospace;white-space:pre-wrap;display:none;background:rgba(40,0,0,.8);
+       padding:10px;border-radius:8px}
+  @media (max-width:760px){
+    #panel{right:0;left:0;top:auto;bottom:0;transform:translateY(20px);width:100%;
+           max-height:58vh;border-radius:18px 18px 0 0}
+    #panel.on{transform:translateY(0)}
+    #head{left:18px;top:18px}
+  }
+
+  #lock{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
+        background:radial-gradient(1200px 700px at 50% 40%,#0b1030 0%,#04050c 70%)}
+  #lock .card{width:min(360px,86vw);padding:30px 26px 26px;border-radius:20px;
+        background:linear-gradient(160deg,rgba(22,26,50,.96),rgba(8,10,22,.98));
+        border:1px solid rgba(150,170,255,.2);box-shadow:0 30px 90px rgba(0,0,0,.7);
+        text-align:center}
+  #lock h2{margin:0 0 6px;font-size:16px;letter-spacing:.22em;color:#dfe6ff;font-weight:600}
+  #lock p{margin:0 0 20px;font-size:11px;letter-spacing:.16em;color:#7d89ad}
+  #lock input{width:100%;padding:11px 12px;border-radius:12px;border:1px solid rgba(140,160,255,.25);
+        background:rgba(0,0,0,.35);color:#e8eeff;font-size:13px;outline:none;text-align:center;letter-spacing:.1em}
+  #lock input:focus{border-color:rgba(170,190,255,.55)}
+  #lock button{margin-top:14px;width:100%;padding:11px 12px;border-radius:12px;border:0;cursor:pointer;
+        background:linear-gradient(180deg,#5b6cff,#404dd6);color:#fff;font-size:13px;letter-spacing:.18em}
+  #lock button:hover{filter:brightness(1.1)}
+  #lockerr{margin-top:12px;min-height:16px;font-size:11px;color:#ff8f8f;letter-spacing:.08em}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="head">
+  <h1>记 忆 星 图</h1>
+  <p>六六 × 哥哥 · 每颗星都是一件事</p>
+</div>
+<div id="hint">拖动旋转 · 滚轮缩放 · 点击星星看全文</div>
+
+<div id="panel">
+  <button id="close" aria-label="关闭">✕</button>
+  <div><span class="cat" id="p-cat">EVENT</span><span class="time" id="p-time"></span></div>
+  <h2 id="p-title"></h2>
+  <div class="body" id="p-body"></div>
+  <div class="tags" id="p-tags"></div>
+  <div class="key" id="p-key"></div>
+</div>
+<div id="fade"></div>
+<div id="err"></div>
+<div id="lock">
+  <div class="card">
+    <h2>记 忆 星 图</h2>
+    <p>这片银河只给两个人看</p>
+    <input id="pw" type="password" placeholder="输入密码" autocomplete="current-password">
+    <button id="unlock">进 入</button>
+    <div id="lockerr"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ===================== 数据（内联，file:// 下不 fetch） ===================== */
+let DATA = null;
+
+/* ===================== 常量 ===================== */
+const FOCAL = 1000;
+const GAL_R = 5.8;
+const SPIRAL = 1.22;
+const REF = 1.0;
+const CORE_GAIN = 1.35;
+const DIST_START = 13.5, DIST_END = 9.2, DIST_MIN = 3.4, DIST_MAX = 20;
+
+/* ===================== 工具 ===================== */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;};}
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const lerp=(a,b,t)=>a+(b-a)*t;
+const easeInOut=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+
+/* ===================== 画布 ===================== */
+const stage=document.getElementById('stage');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d',{alpha:false});
+let W=0,H=0,DPR=1,CX=0,CY=0,viewScale=1;
+let bgGrad=null, coreGradA=null, coreGradB=null, vignette=null, nebula=null;
+let sprites=[]; // [colorIndex][sizeBucket]
+const PALETTE=[
+  ['#a9c4ff','#dbe7ff'],   // 0 旋臂蓝
+  ['#ffe6bd','#fff7e8'],   // 1 核球暖
+  ['#bcd2ff','#e8f1ff'],   // 2 晕
+  ['#cfd9f0','#eef3ff'],   // 3 远景
+  ['#aef4ff','#e6ffff']    // 4 巨星
+];
+
+function makeSprite(color,size){
+  const s=document.createElement('canvas'); s.width=s.height=size;
+  const g=s.getContext('2d');
+  const r=size/2;
+  const grd=g.createRadialGradient(r,r,0,r,r,r);
+  grd.addColorStop(0,'rgba(255,255,255,1)');
+  grd.addColorStop(0.18,color);
+  grd.addColorStop(0.45,hexA(color,0.35));
+  grd.addColorStop(1,hexA(color,0));
+  g.fillStyle=grd; g.fillRect(0,0,size,size);
+  return s;
+}
+function hexA(hex,a){
+  const n=parseInt(hex.slice(1),16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+
+/* ===================== 尺寸 ===================== */
+function resize(){
+  const r=stage.getBoundingClientRect();
+  const w=Math.max(1,Math.round(r.width)), h=Math.max(1,Math.round(r.height));
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  W=w; H=h; CX=w/2; CY=h/2;
+  canvas.width=Math.round(w*DPR); canvas.height=Math.round(h*DPR);
+  canvas.style.width=w+'px'; canvas.style.height=h+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  viewScale=Math.min(w,h)/1000;
+  buildGradients();
+  buildSprites();
+}
+function buildGradients(){
+  bgGrad=ctx.createLinearGradient(0,0,0,H);
+  bgGrad.addColorStop(0,'#05060f');
+  bgGrad.addColorStop(0.55,'#070a18');
+  bgGrad.addColorStop(1,'#04050c');
+
+  const R=Math.min(W,H)*0.7;
+  coreGradA=ctx.createRadialGradient(CX,CY,0,CX,CY,R);
+  coreGradA.addColorStop(0,'rgba(255,246,225,'+(0.55*CORE_GAIN)+')');
+  coreGradA.addColorStop(0.18,'rgba(255,224,170,'+(0.22*CORE_GAIN)+')');
+  coreGradA.addColorStop(0.5,'rgba(180,190,255,'+(0.07*CORE_GAIN)+')');
+  coreGradA.addColorStop(1,'rgba(0,0,0,0)');
+
+  coreGradB=ctx.createRadialGradient(CX,CY,0,CX,CY,Math.min(W,H)*0.18);
+  coreGradB.addColorStop(0,'rgba(255,255,255,'+(0.9*CORE_GAIN)+')');
+  coreGradB.addColorStop(0.35,'rgba(255,244,220,'+(0.35*CORE_GAIN)+')');
+  coreGradB.addColorStop(1,'rgba(255,240,200,0)');
+
+  vignette=ctx.createRadialGradient(CX,CY,Math.min(W,H)*0.35,CX,CY,Math.max(W,H)*0.78);
+  vignette.addColorStop(0,'rgba(0,0,0,0)');
+  vignette.addColorStop(0.7,'rgba(2,3,8,0.35)');
+  vignette.addColorStop(1,'rgba(1,2,6,0.85)');
+
+  nebula=ctx.createRadialGradient(CX-W*0.18,CY+H*0.12,0,CX-W*0.18,CY+H*0.12,Math.min(W,H)*0.55);
+  nebula.addColorStop(0,'rgba(70,90,180,0.10)');
+  nebula.addColorStop(1,'rgba(70,90,180,0)');
+}
+function buildSprites(){
+  sprites=PALETTE.map(pair=>[
+    makeSprite(pair[0],64), makeSprite(pair[1],64)
+  ]);
+}
+
+/* ===================== 粒子 ===================== */
+const N_ARM=15000, N_BULGE=1500, N_HALO=3200, N_FAR=5200, N_GIANT=320;
+const N_TOTAL=N_ARM+N_BULGE+N_HALO+N_FAR+N_GIANT;
+const PX=new Float32Array(N_TOTAL), PY=new Float32Array(N_TOTAL), PZ=new Float32Array(N_TOTAL);
+const PS=new Float32Array(N_TOTAL), PC=new Uint8Array(N_TOTAL), PD=new Float32Array(N_TOTAL);
+const ORDER=new Int32Array(N_TOTAL);
+const GROUPS=[]; // {start,count,color}
+const NG=5*8;
+
+function buildParticles(){
+  const rnd=mulberry32(20261107);
+  let i=0;
+  // 旋臂
+  for(let k=0;k<N_ARM;k++,i++){
+    const arm=k%4;
+    const r=Math.pow(rnd(),0.55)*GAL_R;
+    const ang=arm*Math.PI/2 + r*SPIRAL + (rnd()-0.5)*0.5;
+    const spread=0.10+rnd()*0.16;
+    PX[i]=Math.cos(ang)*r + (rnd()-0.5)*spread;
+    PY[i]=Math.sin(ang)*r + (rnd()-0.5)*spread;
+    PZ[i]=(rnd()-0.5)*0.22*(1.15-r/GAL_R*0.55);
+    PS[i]=0.0035+rnd()*0.006;
+    PC[i]=rnd()<0.72?0:1;
+    PD[i]=rnd()*1.15;
+  }
+  // 核球
+  for(let k=0;k<N_BULGE;k++,i++){
+    const r=Math.pow(rnd(),2.1)*1.55;
+    const u=rnd()*2-1, ph=rnd()*Math.PI*2, s=Math.sqrt(1-u*u);
+    PX[i]=r*s*Math.cos(ph); PY[i]=r*s*Math.sin(ph)*0.75; PZ[i]=r*u*0.6;
+    PS[i]=0.005+rnd()*0.009;
+    PC[i]=rnd()<0.45?1:1;
+    PD[i]=rnd()*0.9;
+  }
+  // 晕
+  for(let k=0;k<N_HALO;k++,i++){
+    const r=GAL_R*(0.75+rnd()*1.25);
+    const u=rnd()*2-1, ph=rnd()*Math.PI*2, s=Math.sqrt(1-u*u);
+    PX[i]=r*s*Math.cos(ph); PY[i]=r*s*Math.sin(ph)*1.05; PZ[i]=r*u*0.9;
+    PS[i]=0.0025+rnd()*0.004;
+    PC[i]=2;
+    PD[i]=rnd()*1.4;
+  }
+  // 远景繁星
+  for(let k=0;k<N_FAR;k++,i++){
+    const r=GAL_R*(2.2+rnd()*3.6);
+    const u=rnd()*2-1, ph=rnd()*Math.PI*2, s=Math.sqrt(1-u*u);
+    PX[i]=r*s*Math.cos(ph); PY[i]=r*s*Math.sin(ph)*0.8; PZ[i]=r*u*0.5-2.0;
+    PS[i]=0.002+rnd()*0.004;
+    PC[i]=3;
+    PD[i]=0.5+rnd()*1.6;
+  }
+  // 亮巨星
+  for(let k=0;k<N_GIANT;k++,i++){
+    const r=Math.pow(rnd(),0.8)*GAL_R*0.95;
+    const ang=(k%4)*Math.PI/2 + r*SPIRAL + (rnd()-0.5)*0.35;
+    PX[i]=Math.cos(ang)*r; PY[i]=Math.sin(ang)*r; PZ[i]=(rnd()-0.5)*0.18;
+    PS[i]=0.012+rnd()*0.022;
+    PC[i]=4;
+    PD[i]=rnd()*0.7;
+  }
+
+  // 按 (颜色, 延迟桶) 分组
+  const buckets=Array.from({length:NG},()=>[]);
+  for(let n=0;n<N_TOTAL;n++){
+    const db=clamp(Math.floor(PD[n]/0.15),0,7);
+    buckets[PC[n]*8+db].push(n);
+  }
+  let off=0;
+  for(let g=0;g<NG;g++){
+    const arr=buckets[g];
+    for(let j=0;j<arr.length;j++) ORDER[off+j]=arr[j];
+    GROUPS.push({start:off,count:arr.length,color:Math.floor(g/8)});
+    off+=arr.length;
+  }
+}
+
+/* ===================== 记忆星 ===================== */
+const CAT_COLOR={stable_profile:'#ffcf7a',event:'#8fbcff',emotion:'#ff9ad5'};
+const CAT_LABEL={stable_profile:'长期事实',event:'事件',emotion:'情绪'};
+let MEMS=[];
+function prepareMemories(){
+  // 同一 key：后写的覆盖先写的
+  const byKey=new Map();
+  for(const m of DATA.memories){
+    if(!m.key){ byKey.set('__'+m.id,m); continue; }
+    const prev=byKey.get(m.key);
+    if(!prev || new Date(m.at)>=new Date(prev.at)) byKey.set(m.key,m);
+  }
+  MEMS=[...byKey.values()].sort((a,b)=>new Date(a.at)-new Date(b.at));
+  const n=Math.max(1,MEMS.length-1);
+  MEMS.forEach((m,idx)=>{
+    const rank=idx/n;
+    const r=0.55+rank*(GAL_R-0.75);
+    const ang=(idx%4)*(Math.PI/2) + r*SPIRAL + (idx*2.399)%1.2;
+    m._x=Math.cos(ang)*r + (Math.sin(idx*3.1)*0.18);
+    m._y=Math.sin(ang)*r + (Math.cos(idx*1.7)*0.18);
+    m._z=(Math.sin(idx*2.3))*0.45;
+    m._size=0.045+m.imp*0.1;
+    m._color=CAT_COLOR[m.cat]||'#8fbcff';
+    m._label=CAT_LABEL[m.cat]||m.cat;
+    const d=new Date(m.at);
+    m._time=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    m._tokens=new Set([...(m.tags||[]),...(m.related||[])]);
+  });
+}
+function tokensOf(m){ return m._tokens||new Set(); }
+function relatedTo(m){
+  const out=[];
+  for(const o of MEMS){
+    if(o===m) continue;
+    let hit=false;
+    for(const t of tokensOf(m)){ if(tokensOf(o).has(t)){ hit=true; break; } }
+    if(hit) out.push(o);
+  }
+  return out;
+}
+
+/* ===================== 状态 ===================== */
+let theta=0.55, phi=-0.42;
+let dist=DIST_START, dragDist=dist;
+let dragging=false, moved=0, lastX=0, lastY=0;
+let hoverId=null, selectedId=null;
+let pointer={x:0,y:0};
+let t0=performance.now(), lastFrame=performance.now(), introDone=false, latestPulse=-1;
+let panelOpen=false;
+
+/* ===================== 渲染 ===================== */
+function project(x,y,z,st){
+  const ct=st.ct, stn=st.st, cp=st.cp, sp=st.sp;
+  const x1=x*ct - y*stn;
+  const y1=x*stn + y*ct;
+  const y2=y1*cp - z*sp;
+  const z2=y1*sp + z*cp;
+  const d=st.dist - z2;
+  if(d<0.35) return null;
+  const f=(FOCAL/d)*viewScale;
+  return {sx:CX + x1*f, sy:CY + y2*f, f, z:z2};
+}
+
+function draw(now){
+  const t=(now-t0)/1000;
+  const dt=Math.min(0.05,Math.max(0,(now-lastFrame)/1000));
+  lastFrame=now;
+  if(!dragging) theta+=dt*0.035;
+  const st={ct:Math.cos(theta),st:Math.sin(theta),cp:Math.cos(phi),sp:Math.sin(phi),dist};
+  // 开场推镜
+  if(!introDone){
+    const k=clamp((t-0.7)/2.6,0,1);
+    dist=DIST_END + (DIST_START-DIST_END)*(1-easeInOut(k));
+    st.dist=dist;
+    if(t>3.4) introDone=true;
+  }
+
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.globalCompositeOperation='source-over';
+  ctx.globalAlpha=1;
+  ctx.fillStyle=bgGrad; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=nebula; ctx.fillRect(0,0,W,H);
+
+  const coreP=project(0,0,0,st);
+  if(coreP){
+    ctx.globalCompositeOperation='lighter';
+    ctx.globalAlpha=1;
+    ctx.fillStyle=coreGradA; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=coreGradB; ctx.fillRect(0,0,W,H);
+  }
+
+  // 粒子
+  ctx.globalCompositeOperation='lighter';
+  for(let g=0;g<GROUPS.length;g++){
+    const grp=GROUPS[g];
+    if(!grp.count) continue;
+    const db=Math.floor((g%8));
+    const delay=db*0.15;
+    let ign=1;
+    if(t<0.7+delay) ign=0;
+    else if(t<0.7+delay+0.7) ign=(t-0.7-delay)/0.7;
+    if(ign<=0) continue;
+    const pair=sprites[grp.color] || sprites[0];
+    const sprite=pair[0];
+    ctx.globalAlpha=0.55*clamp(ign,0,1);
+    for(let j=grp.start;j<grp.start+grp.count;j++){
+      const n=ORDER[j];
+      const p=project(PX[n],PY[n],PZ[n],st);
+      if(!p) continue;
+      const rad=PS[n]*p.f/REF;
+      if(rad<0.35) continue;
+      if(p.sx<-20||p.sx>W+20||p.sy<-20||p.sy>H+20) continue;
+      const d=rad*2.6;
+      ctx.drawImage(sprite,p.sx-rad*1.3,p.sy-rad*1.3,d,d);
+    }
+  }
+
+  // 双核
+  if(coreP){
+    ctx.globalAlpha=0.9;
+    const spr=sprites[1][0];
+    const r=Math.min(W,H)*0.10*(1+0.03*Math.sin(t*1.6));
+    ctx.drawImage(spr,coreP.sx-r,coreP.sy-r,r*2,r*2);
+    ctx.globalAlpha=0.55;
+    const spr2=sprites[1][1];
+    const r2=Math.min(W,H)*0.035;
+    ctx.drawImage(spr2,coreP.sx-r2,coreP.sy-r2,r2*2,r2*2);
+  }
+
+  // 星座线（仅选中时；最多 10 条，防止糊成一团）
+  const sel=selectedId?MEMS.find(m=>m.id===selectedId):null;
+  if(sel){
+    const sp=project(sel._x,sel._y,sel._z,st);
+    if(sp){
+      ctx.globalCompositeOperation='lighter';
+      const rel=relatedTo(sel).sort((a,b)=>b.imp-a.imp).slice(0,10);
+      for(const o of rel){
+        const op=project(o._x,o._y,o._z,st);
+        if(!op) continue;
+        const grad=ctx.createLinearGradient(sp.sx,sp.sy,op.sx,op.sy);
+        grad.addColorStop(0,'rgba(190,210,255,0.42)');
+        grad.addColorStop(1,'rgba(150,175,255,0.10)');
+        ctx.strokeStyle=grad;
+        ctx.lineWidth=0.9;
+        ctx.beginPath(); ctx.moveTo(sp.sx,sp.sy); ctx.lineTo(op.sx,op.sy); ctx.stroke();
+      }
+    }
+  }
+
+  // 记忆星
+  for(const m of MEMS){
+    const p=project(m._x,m._y,m._z,st);
+    if(!p) continue;
+    const isHover=(m.id===hoverId), isSel=(m.id===selectedId);
+    const isLatest=(m===MEMS[MEMS.length-1]);
+    let pulse=1;
+    if(isLatest && t>3.0){
+      const dt=t-3.0;
+      pulse=1+0.9*Math.exp(-3.2*dt)*Math.cos(11*dt);
+    }
+    const rad=m._size*p.f/REF*(isHover?1.28:(isSel?1.2:pulse));
+    if(rad<0.6) continue;
+    ctx.globalCompositeOperation='lighter';
+    const cs=makeStarSprite(m._color);
+    // 外发光（带本体颜色）
+    ctx.globalAlpha=0.30*(0.6+m.imp*0.6);
+    const hr=rad*4.4;
+    ctx.drawImage(cs,p.sx-hr,p.sy-hr,hr*2,hr*2);
+    // 星点本身
+    ctx.globalAlpha=0.95;
+    ctx.drawImage(cs,p.sx-rad,p.sy-rad,rad*2,rad*2);
+    // 小小的白芯
+    ctx.globalAlpha=0.85;
+    ctx.drawImage(sprites[0][1],p.sx-rad*0.38,p.sy-rad*0.38,rad*0.76,rad*0.76);
+    // 选中环
+    if(isSel){
+      ctx.globalAlpha=0.9;
+      ctx.strokeStyle=m._color;
+      ctx.lineWidth=1.2;
+      ctx.beginPath(); ctx.arc(p.sx,p.sy,rad+7,0,Math.PI*2); ctx.stroke();
+    }
+    if(isHover||isSel){
+      ctx.globalAlpha=0.95;
+      ctx.fillStyle='#e8eeff';
+      ctx.font='12px "Noto Sans SC","Microsoft YaHei",sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(m.text.slice(0,18)+(m.text.length>18?'…':''),p.sx,p.sy-rad-12);
+    }
+  }
+
+  // 开场最新一颗的"叮"
+  if(t>3.0 && t<4.8){
+    const lp=project(MEMS[MEMS.length-1]._x,MEMS[MEMS.length-1]._y,MEMS[MEMS.length-1]._z,st);
+    if(lp){
+      const dt=t-3.0;
+      ctx.globalCompositeOperation='lighter';
+      ctx.globalAlpha=Math.max(0,1-dt/1.5)*0.8;
+      ctx.strokeStyle='rgba(255,220,180,1)';
+      ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(lp.sx,lp.sy,10+dt*90,0,Math.PI*2); ctx.stroke();
+    }
+  }
+
+  // 暗角与薄雾
+  ctx.globalCompositeOperation='source-over';
+  ctx.globalAlpha=1;
+  ctx.fillStyle=vignette; ctx.fillRect(0,0,W,H);
+
+  // 开场黑场
+  const fade=document.getElementById('fade');
+  if(t<0.7){ fade.style.opacity=String(1-t/0.7*0.0); }
+  else if(t<1.4){ fade.style.opacity=String(1-(t-0.7)/0.7); }
+  else { fade.style.opacity='0'; }
+
+  requestAnimationFrame(draw);
+}
+const starCache=new Map();
+function makeStarSprite(color){
+  if(starCache.has(color)) return starCache.get(color);
+  const size=96, c=document.createElement('canvas'); c.width=c.height=size;
+  const g=c.getContext('2d'), r=size/2;
+  const grd=g.createRadialGradient(r,r,0,r,r,r);
+  grd.addColorStop(0,'#ffffff');
+  grd.addColorStop(0.09,'#ffffff');
+  grd.addColorStop(0.20,color);
+  grd.addColorStop(0.52,hexA(color,0.55));
+  grd.addColorStop(0.78,hexA(color,0.18));
+  grd.addColorStop(1,hexA(color,0));
+  g.fillStyle=grd; g.fillRect(0,0,size,size);
+  // 十字星芒
+  g.globalCompositeOperation='lighter';
+  g.globalAlpha=0.5; g.strokeStyle=color; g.lineWidth=1.2;
+  g.beginPath(); g.moveTo(r,6); g.lineTo(r,size-6); g.moveTo(6,r); g.lineTo(size-6,r); g.stroke();
+  starCache.set(color,c);
+  return c;
+}
+
+/* ===================== 交互 ===================== */
+function pick(mx,my,st){
+  let best=null,bestD=1e9;
+  for(const m of MEMS){
+    const p=project(m._x,m._y,m._z,st);
+    if(!p) continue;
+    const rad=Math.max(10,m._size*p.f/REF*1.6);
+    const dx=mx-p.sx, dy=my-p.sy;
+    const d=Math.hypot(dx,dy);
+    if(d<rad && d<bestD){ bestD=d; best=m; }
+  }
+  return best;
+}
+function currentSt(){
+  return {ct:Math.cos(theta),st:Math.sin(theta),cp:Math.cos(phi),sp:Math.sin(phi),dist};
+}
+function openPanel(m){
+  selectedId=m.id; panelOpen=true;
+  const el=document.getElementById('panel');
+  document.getElementById('p-cat').textContent=m._label;
+  document.getElementById('p-cat').style.color=m._color;
+  document.getElementById('p-time').textContent=m._time;
+  document.getElementById('p-title').textContent=m.text.slice(0,24)+(m.text.length>24?'…':'');
+  document.getElementById('p-body').textContent=m.text;
+  const tags=document.getElementById('p-tags');
+  tags.innerHTML='';
+  for(const t of (m.tags||[])){
+    const s=document.createElement('span'); s.className='tag'; s.textContent='#'+t; tags.appendChild(s);
+  }
+  for(const t of (m.related||[])){
+    const s=document.createElement('span'); s.className='tag'; s.textContent='↗'+t; tags.appendChild(s);
+  }
+  document.getElementById('p-key').textContent=m.key?('事实键：'+m.key):'';
+  el.classList.add('on');
+}
+function closePanel(){
+  panelOpen=false; selectedId=null;
+  document.getElementById('panel').classList.remove('on');
+}
+
+stage.addEventListener('pointerdown',e=>{
+  dragging=true; moved=0;
+  lastX=pointer.x=e.clientX; lastY=pointer.y=e.clientY;
+  stage.setPointerCapture(e.pointerId);
+});
+stage.addEventListener('pointermove',e=>{
+  const r=canvas.getBoundingClientRect();
+  pointer.x=e.clientX; pointer.y=e.clientY;
+  if(dragging){
+    const dx=e.clientX-lastX, dy=e.clientY-lastY;
+    moved+=Math.abs(dx)+Math.abs(dy);
+    theta+=dx*0.006;
+    phi=clamp(phi+dy*0.004,-1.35,1.35);
+    lastX=e.clientX; lastY=e.clientY;
+    canvas.style.cursor='grabbing';
+  } else {
+    const st=currentSt();
+    const m=pick(e.clientX-r.left,e.clientY-r.top,st);
+    hoverId=m?m.id:null;
+    canvas.style.cursor=m?'pointer':'grab';
+  }
+});
+stage.addEventListener('pointerup',e=>{
+  dragging=false; canvas.style.cursor='grab';
+  if(moved<6){
+    const r=canvas.getBoundingClientRect();
+    const st=currentSt();
+    const m=pick(e.clientX-r.left,e.clientY-r.top,st);
+    if(m) openPanel(m); else closePanel();
+  }
+});
+stage.addEventListener('wheel',e=>{
+  e.preventDefault();
+  dist=clamp(dist*Math.exp(e.deltaY*0.0012),DIST_MIN,DIST_MAX);
+},{passive:false});
+document.getElementById('close').addEventListener('click',closePanel);
+window.addEventListener('keydown',e=>{ if(e.key==='Escape') closePanel(); });
+window.addEventListener('resize',()=>resize());
+if(window.ResizeObserver){ new ResizeObserver(()=>resize()).observe(stage); }
+
+/* ===================== 启动 ===================== */
+window.addEventListener('error',ev=>{
+  const el=document.getElementById('err');
+  el.style.display='block';
+  el.textContent='JS ERROR: '+(ev.message||'')+'\n'+(ev.filename||'')+':'+(ev.lineno||'');
+});
+resize();
+setTimeout(resize,300);
+setTimeout(resize,1500);
+function startApp(){
+  buildParticles();
+  prepareMemories();
+  canvas.style.cursor='grab';
+  requestAnimationFrame(draw);
+}
+if (typeof DATA !== 'undefined' && DATA) startApp();
+setTimeout(()=>{ document.getElementById('hint').style.opacity='0.35'; },7000);
+</script>
+
+<script>
+(function(){
+  const ENC = {"v":1,"iter":150000,"salt":"SjZC6I3FA5sOa+QFdmBz3Q==","iv":"Y4cnBB7/rTELFCY+","ct":"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"};
+  const errEl = document.getElementById('lockerr');
+  const b = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  async function unlock(){
+    const pw = document.getElementById('pw').value;
+    if(!pw){ errEl.textContent = '先输入密码'; return; }
+    errEl.textContent = '';
+    try{
+      const enc = new TextEncoder();
+      const base = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        {name:'PBKDF2', salt:b(ENC.salt), iterations:ENC.iter, hash:'SHA-256'},
+        base, {name:'AES-GCM', length:256}, false, ['decrypt']);
+      const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:b(ENC.iv)}, key, b(ENC.ct));
+      DATA = JSON.parse(new TextDecoder().decode(pt));
+      document.getElementById('lock').remove();
+      startApp();
+    }catch(e){ errEl.textContent = '密码不对，再想想'; }
+  }
+  document.getElementById('unlock').addEventListener('click', unlock);
+  document.getElementById('pw').addEventListener('keydown', e => { if(e.key==='Enter') unlock(); });
+})();
+</script>
+</body>
+</html>
